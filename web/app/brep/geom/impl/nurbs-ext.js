@@ -2,6 +2,9 @@ import * as vec from "../../../math/vec";
 import * as math from  '../../../math/math'
 import {eqEps, TOLERANCE, TOLERANCE_01, TOLERANCE_SQ} from '../tolerance';
 import {fmin_bfgs} from "../../../math/optim";
+import {NurbsCurve} from './nurbs';
+import {IntersectionCurve} from './intersectionCurve';
+import curveTess from './curve/curve-tess';
 
 export function curveStep(curve, u, tessTol, scale) {
   tessTol = tessTol || 1;
@@ -83,6 +86,8 @@ export function curveClosestParam(curve, point) {
   return verb.eval.Analyze.rationalCurveClosestParam(curve, point);
 }
 
+export const surfaceClosestParam = verb.eval.Analyze.rationalSurfaceClosestParam;
+
 export function surfaceIntersect(surface0, surface1) {
   const tess0 = verb.eval.Tess.rationalSurfaceAdaptive(surface0);
   const tess1 = verb.eval.Tess.rationalSurfaceAdaptive(surface1);
@@ -107,6 +112,9 @@ export function surfaceIntersect(surface0, surface1) {
     });
   });
 
+  // exactPls[0].forEach(p =>  __DEBUG__.AddPoint3(p.point));
+
+
   let degree = Math.max(surfaceMaxDegree(surface0) === 1 && surfaceMaxDegree(surface1));
   let inserts = degree - 1; 
   let nurbses = [];
@@ -116,20 +124,28 @@ export function surfaceIntersect(surface0, surface1) {
   for (let pl of exactPls) {
     let points = pl.map(ip => ip.point);
     let polyline = verb.eval.Make.polyline(points);
-    let [uMin, uMax] = curveDomain(polyline);
-    let insertStep = (uMax - uMin) / (inserts + 1);
-    let normalizedPoints = [points[0]];
-    for (let i = 0; i < inserts; i++) {
-      let roughPt = curvePoint(polyline, i+insertStep);
-      let uv0 = verb.eval.Analyze.rationalSurfaceClosestParam(surface0, roughPt);
-      let uv1 = verb.eval.Analyze.rationalSurfaceClosestParam(surface1, roughPt);
-      let pt = verb.eval.Intersect.surfacesAtPointWithEstimate(surface0,surface1,uv0,uv1,TOLERANCE);
-      normalizedPoints.push(pt);
-    }
-    normalizedPoints.push(points[points.length - 1]);
-
-    let nurbs = verb.eval.Make.rationalInterpCurve(normalizedPoints, degree);
-    nurbses.push(nurbs);
+    normalizeCurveEnds(polyline);
+    let intersectionCurve = new IntersectionCurve(polyline, surface0, surface1);
+    intersectionCurve.optimalSplits = () => 1;
+    let [tessMin, tessMax] = intersectionCurve.domain();
+    polyline = verb.eval.Make.polyline(curveTess(intersectionCurve, tessMin, tessMax));
+    normalizeCurveEnds(polyline);
+    intersectionCurve = new IntersectionCurve(polyline, surface0, surface1);
+    nurbses.push(new NurbsCurve(intersectionCurve));
+    // let [uMin, uMax] = curveDomain(polyline);
+    // let insertStep = (uMax - uMin) / (inserts + 1);
+    // let normalizedPoints = [points[0]];
+    // for (let i = 0; i < inserts; i++) {
+    //   let roughPt = curvePoint(polyline, i+insertStep);
+    //   let uv0 = verb.eval.Analyze.rationalSurfaceClosestParam(surface0, roughPt);
+    //   let uv1 = verb.eval.Analyze.rationalSurfaceClosestParam(surface1, roughPt);
+    //   let pt = verb.eval.Intersect.surfacesAtPointWithEstimate(surface0,surface1,uv0,uv1,TOLERANCE);
+    //   normalizedPoints.push(pt);
+    // }
+    // normalizedPoints.push(points[points.length - 1]);
+    //
+    // let nurbs = verb.eval.Make.rationalInterpCurve(normalizedPoints, degree);
+    // nurbses.push(nurbs);
   }
   
   return nurbses;

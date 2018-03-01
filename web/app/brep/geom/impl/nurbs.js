@@ -29,8 +29,6 @@ class ParametricCurve {
 
   optimalSplits() { }
 
-  normalizeParametrization() { }
-
   invert() { }
 }
 
